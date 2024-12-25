@@ -1,11 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:firebase_database/firebase_database.dart';
+import '../model/address.dart';
 import '../model/cart.dart';
-import '../model/cartItem.dart';
+import '../model/cart_item.dart';
 import '../model/category.dart';
-import '../model/product.dart';
-import '../model/store.dart';
-import '../model/user.dart' as app_user;
+import '../model/contact_information.dart';
+import '../model/food.dart';
+import '../model/ingredients_item.dart';
+import '../model/restaurant.dart';
+import '../model/user.dart';
 
 class CartService {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
@@ -35,10 +38,10 @@ class CartService {
       if (cartEntry.key.isEmpty) return null;
 
       return Cart.fromMap(
-        cartEntry.key,
-        Map<String, dynamic>.from(cartEntry.value as Map),
-        users: {}, 
-        stores: {},
+        {
+          'id': cartEntry.key,
+          ...Map<String, dynamic>.from(cartEntry.value as Map),
+        },
       );
     });
   }
@@ -104,14 +107,14 @@ class CartService {
   }
 
   // Thêm sản phẩm vào giỏ hàng
-  Future<void> addToCart(Product product, int quantity) async {
+  Future<void> addToCart(Food food, int quantity) async {
     try {
       final user = auth.FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Người dùng chưa đăng nhập');
 
       print('Adding to cart:');
-      print('Product ID: ${product.id}');
-      print('Store ID: ${product.store.id}');
+      print('Product ID: ${food.id}');
+      print('Store ID: ${food.restaurant?.id}');
       print('User ID: ${user.uid}');
 
       // Kiểm tra giỏ hàng chưa thanh toán hiện tại
@@ -134,13 +137,13 @@ class CartService {
           final currentStoreId = (pendingCart.value as Map)['storeId'];
           
           // Nếu sản phẩm mới không cùng store
-          if (currentStoreId != product.store.id) {
+          if (currentStoreId != food.restaurant?.id) {
             throw Exception('Vui lòng thanh toán giỏ hàng hiện tại trước khi mua sắm từ cửa hàng khác');
           }
 
           // Nếu cùng store, thêm vào giỏ hàng hiện tại
           final cartId = pendingCart.key;
-          await _addOrUpdateCartItem(cartId, user.uid, product, quantity);
+          await _addOrUpdateCartItem(cartId, user.uid, food, quantity);
           return;
         }
       }
@@ -151,14 +154,14 @@ class CartService {
       
       final cartData = {
         'userId': user.uid,
-        'storeId': product.store.id,
+        'storeId': food.restaurant?.id,
         'status': 'pending',
         'isPaid': 0,
         'createdAt': ServerValue.timestamp,
       };
 
       await cartRef.set(cartData);
-      await _addOrUpdateCartItem(cartId, user.uid, product, quantity);
+      await _addOrUpdateCartItem(cartId, user.uid, food, quantity);
     } catch (e) {
       print('Error in addToCart: $e');
       rethrow;
@@ -166,7 +169,7 @@ class CartService {
   }
 
   // Helper method để thêm hoặc cập nhật cartItem
-  Future<void> _addOrUpdateCartItem(String cartId, String userId, Product product, int quantity) async {
+  Future<void> _addOrUpdateCartItem(String cartId, String userId, Food food, int quantity) async {
     final existingItemSnapshot = await _database
         .child(_cartItemsPath)
         .orderByChild('cartId')
@@ -179,7 +182,7 @@ class CartService {
       // Kiểm tra sản phẩm đã có trong giỏ hàng chưa
       for (var entry in items.entries) {
         final itemData = entry.value as Map;
-        if (itemData['productId'] == product.id) {
+        if (itemData['productId'] == food.id) {
           // Cập nhật số lượng nếu sản phẩm đã tồn tại
           final currentQuantity = itemData['quantity'] as int;
           await _database
@@ -194,26 +197,36 @@ class CartService {
     // Thêm sản phẩm mới vào giỏ hàng
     final cartItemRef = _database.child(_cartItemsPath).push();
     final cartItemData = {
-      'cartId': cartId,
-      'userId': userId,
-      'productId': product.id,
-      'storeId': product.store.id,
+      'id': cartItemRef.key,
+      'cart': {'id': cartId}, // Chỉ lưu tham chiếu Cart với id
+      'food': {
+        'id': food.id,
+        'name': food.name,
+        'price': food.price,
+        'images': [food.images],
+        'description': food.description,
+        'restaurant': {
+          'id': food.restaurant?.id,
+          'owner': food.restaurant?.owner != null ? food.restaurant?.owner?.toMap() : null,
+          'name': food.restaurant?.name,
+          'description': food.restaurant?.description,
+          'cuisineType': food.restaurant?.cuisineType,
+          'address': food.restaurant?.address != null ? food.restaurant?.address?.toMap() : null,
+          'contactInformation': food.restaurant?.contactInformation != null
+              ? food.restaurant?.contactInformation?.toMap()
+              : null,
+          'openingHours': food.restaurant?.openingHours,
+          'images': food.restaurant?.images,
+          'registrationDate': food.restaurant?.registrationDate?.toIso8601String(),
+          'open': food.restaurant?.open,
+        },
+
+      }, // Thông tin món ăn
       'quantity': quantity,
-      'price': product.price,
-      'createdAt': ServerValue.timestamp,
-      'status': 'pending',
-      'productName': product.name,
-      'productImage': product.image,
-      'productThumbnail': product.thumbnail,
-      'productDescription': product.description,
-      'productStatus': product.status,
-      'productPrice': product.price,
-      'storeName': product.store.name,
-      'storePhone': product.store.phoneNumber,
-      'storeAddress': product.store.address,
-      'categoryId': product.category.id,
-      'categoryName': product.category.name,
+      'ingredients': food.ingredients, // Nếu Food chứa danh sách nguyên liệu
+      'totalPrice': food.price! * quantity, // Tổng giá trị
     };
+
 
     await cartItemRef.set(cartItemData);
   }
@@ -232,34 +245,6 @@ class CartService {
   }
 
   // Xóa sản phẩm khỏi giỏ hàng
-  Future<void> removeFromCart(String cartItemId) async {
-    try {
-      // Lấy thông tin cartItem trước khi xóa
-      final cartItemSnapshot = await _database
-          .child(_cartItemsPath)
-          .child(cartItemId)
-          .get();
-          
-      if (cartItemSnapshot.value != null) {
-        final cartItemData = cartItemSnapshot.value as Map;
-        final cartId = cartItemData['cartId'] as String;
-        
-        // Xóa cartItem
-        await _database
-            .child(_cartItemsPath)
-            .child(cartItemId)
-            .remove();
-            
-        // Kiểm tra và xóa giỏ hàng nếu rỗng
-        await checkAndRemoveEmptyCart(cartId);
-      }
-    } catch (e) {
-      print('Error removing cart item: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách sản phẩm trong giỏ hàng
   Stream<List<CartItem>> getCartItems(String cartId) {
     print('Getting cart items for cartId: $cartId'); // Debug log
 
@@ -286,9 +271,7 @@ class CartService {
             print('Processing cart item: ${itemData.toString()}'); // Debug log để xem dữ liệu
 
             // Kiểm tra và đảm bảo các trường bắt buộc không null
-            if (itemData['productId'] == null || 
-                itemData['cartId'] == null || 
-                itemData['userId'] == null) {
+            if (itemData['productId'] == null || itemData['cartId'] == null) {
               print('Skipping invalid cart item: ${entry.key}');
               continue;
             }
@@ -296,51 +279,62 @@ class CartService {
             items.add(CartItem(
               id: entry.key,
               cart: Cart(
-                id: itemData['cartId'] ?? '',
-                user: app_user.User(
-                  id: itemData['userId'] ?? '',
-                  fullName: itemData['userName'] ?? '',
+                id: itemData['cartId'] as int?,
+                customer: User(
+                  id: (itemData['userId'] as int?)?.toString() ?? '',
+                  fullName: itemData['userName'] ?? 'Khách hàng không xác định',
                   email: itemData['userEmail'] ?? '',
                   phone: itemData['userPhone'] ?? '',
                 ),
-                store: Store(
-                  id: itemData['storeId'] ?? '',
-                  name: itemData['storeName'] ?? '',
-                  description: '',
-                  phoneNumber: '',
-                  address: '',
-                  status: '',
-                  rating: 0,
-                ),
-                createdAt: itemData['createdAt'] ?? 0,
+                total: (itemData['totalPrice'] as num?)?.toInt() ?? 0,
+                items: [], // Nếu muốn thêm danh sách items, cần xử lý thêm logic ở đây
               ),
-              product: Product(
-                id: itemData['productId'] ?? '',
-                name: itemData['productName'] ?? 'Sản phẩm không xác đnh',
-                price: (itemData['price'] as num?)?.toDouble() ?? 0,
+
+              food: Food(
+                id: itemData['productId'] as int?, // Đảm bảo id là kiểu int
+                name: itemData['productName'] ?? 'Sản phẩm không xác định',
                 description: itemData['productDescription'] ?? '',
-                status: itemData['productStatus'] ?? '',
-                rating: 0,
-                image: itemData['productImage'] ?? '',
-                thumbnail: itemData['productThumbnail'] ?? '',
-                store: Store(
-                  id: itemData['storeId'] ?? '',
-                  name: itemData['storeName'] ?? '',
-                  description: '',
-                  phoneNumber: '',
-                  address: '',
-                  status: '',
-                  rating: 0,
+                price: (itemData['price'] as num?)?.toInt() ?? 0,
+                foodCategory: Category(
+                  id: itemData['categoryId'] as int?,
+                  name: itemData['categoryName'] ?? 'Danh mục không xác định',
+                  restaurant: itemData['restaurantDescription'] ?? '',
                 ),
-                category: Category(
-                  id: itemData['categoryId'] ?? '',
-                  name: itemData['categoryName'] ?? '',
-                  description: ''
+                images: [
+                  itemData['productImage'] ?? '',
+                  itemData['productThumbnail'] ?? ''
+                ],
+                available: itemData['productAvailable'] as bool? ?? true,
+                restaurant: Restaurant(
+                  id: itemData['restaurantId'] as int?,
+                  name: itemData['restaurantName'] ?? 'Nhà hàng không xác định',
+                  description: itemData['restaurantDescription'] ?? '',
+                  address: itemData['restaurantAddressId'] != null
+                      ? Address(
+                    id: itemData['restaurantAddressId'] as int?,
+                  ) : null,
+                  contactInformation: ContactInformation(
+                    email: itemData['restaurantEmail'] ?? '',
+                    mobile: itemData['restaurantPhone'] ?? '',
+                    twitter: itemData['restaurantTwitter'] ?? '',
+                    instagram: itemData['restaurantInstagram'] ?? '',
+                  ),
+
                 ),
+                isVegetarian: itemData['isVegetarian'] as bool? ?? false,
+                isSeasonal: itemData['isSeasonal'] as bool? ?? false,
+                ingredients: itemData['ingredients'] != null
+                    ? List<IngredientsItem>.from((itemData['ingredients'] as List).map(
+                      (ingredient) => IngredientsItem.fromMap(ingredient),
+                ))
+                    : [],
+                creationDate: itemData['creationDate'] != null
+                    ? DateTime.parse(itemData['creationDate'])
+                    : null,
               ),
+
               quantity: (itemData['quantity'] as num?)?.toInt() ?? 1,
-              price: (itemData['price'] as num?)?.toDouble() ?? 0,
-              createdAt: itemData['createdAt'] ?? 0,
+              totalPrice: (itemData['price'] as num?)?.toInt() ?? 0,
             ));
           } catch (itemError) {
             print('Error processing cart item: $itemError');
@@ -352,10 +346,11 @@ class CartService {
         return items;
       } catch (e) {
         print('Error loading cart items: $e'); // Debug log
-        rethrow; // Ném lỗi để có th xử lý ở UI
+        rethrow; // Ném lỗi để có thể xử lý ở UI
       }
     });
   }
+
 
   // Xóa toàn bộ giỏ hàng
   Future<void> clearCart(String cartId) async {

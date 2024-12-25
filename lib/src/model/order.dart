@@ -1,94 +1,66 @@
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter_application_2/src/model/restaurant.dart';
 import 'user.dart';
-import 'store.dart';
+import 'address.dart';
+import 'order_item.dart';
 
-// Enum for payment methods
-enum PaymentMethod {
-  cashOnDelivery, // Trả khi nhận hàng
-}
 
 class Order {
-  String id;
-  User user;
-  Store store;
-  String? note; // Ghi chú
-  String status; // Trạng thái: "chưa nhận", "đã nhận", "đã hủy", v.v.
-  PaymentMethod paymentMethod; // Hình thức thanh toán
-  double totalAmount; // Tổng tiền
-  double shippingFee; // Phí vận chuyển
-  String recipientName; // Tên người nhận
-  String recipientAddress; // Địa chỉ người nhận
-  int createdAt;
+  int? id;
+  User? customer; // Mối quan hệ với User
+  Restaurant? restaurant; // Mối quan hệ với Restaurant
+  int? totalAmount; // Tổng số tiền (thay Long bằng int)
+  String? orderStatus; // Trạng thái đơn hàng
+  DateTime? createdAt; // Ngày tạo đơn hàng (thay Date bằng DateTime)
+  Address? deliveryAddress; // Mối quan hệ với Address
+  List<OrderItem>? items; // Danh sách các sản phẩm trong đơn hàng
+  int? totalItem; // Tổng số sản phẩm
+  int? totalPrice; // Tổng giá trị đơn hàng
 
   Order({
-    required this.id,
-    required this.user,
-    required this.store,
-    this.note,
-    required this.status,
-    this.paymentMethod = PaymentMethod.cashOnDelivery,
-    required this.totalAmount,
-    required this.shippingFee,
-    required this.recipientName,
-    required this.recipientAddress,
-    required this.createdAt,
+    this.id,
+    this.customer,
+    this.restaurant,
+    this.totalAmount,
+    this.orderStatus,
+    this.createdAt,
+    this.deliveryAddress,
+    this.items,
+    this.totalItem,
+    this.totalPrice,
   });
 
+  // Tạo đối tượng Order từ Map
+  factory Order.fromMap(Map<String, dynamic> map) {
+    return Order(
+      id: map['id'],
+      customer: map['customer'] != null ? User.fromMap(map['customer']) : null,
+      restaurant: map['restaurant'] != null ? Restaurant.fromMap(map['restaurant']) : null,
+      totalAmount: map['totalAmount'],
+      orderStatus: map['orderStatus'],
+      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      deliveryAddress: map['deliveryAddress'] != null ? Address.fromMap(map['deliveryAddress']) : null,
+      items: map['items'] != null
+          ? List<OrderItem>.from(map['items'].map((item) => OrderItem.fromMap(item)))
+          : [],
+      totalItem: map['totalItem'],
+      totalPrice: map['totalPrice'],
+    );
+  }
+
+  // Chuyển đối tượng Order thành Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'userId': user.id,
-      'storeId': store.id,
-      'note': note,
-      'status': status,
-      'paymentMethod': paymentMethod.toString(),
+      'customer': customer?.toMap(),
+      'restaurant': restaurant?.toMap(),
       'totalAmount': totalAmount,
-      'shippingFee': shippingFee,
-      'recipientName': recipientName,
-      'recipientAddress': recipientAddress,
-      'createdAt': createdAt,
+      'orderStatus': orderStatus,
+      'createdAt': createdAt?.toIso8601String(),
+      'deliveryAddress': deliveryAddress?.toMap(),
+      'items': items?.map((item) => item.toMap()).toList(),
+      'totalItem': totalItem,
+      'totalPrice': totalPrice,
     };
-  }
-
-  static double _parseDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
-  factory Order.fromMap(
-    Map<String, dynamic> map,
-    Map<String, User> users,
-    Map<String, Store> stores,
-  ) {
-    // Get user and store IDs
-    String userId = map['userId']?.toString() ?? '';
-    String storeId = map['storeId']?.toString() ?? '';
-
-    // Get corresponding user and store objects
-    User? user = users[userId];
-    Store? store = stores[storeId];
-
-    if (user == null || store == null) {
-      throw Exception('User or Store not found for order ${map['id']}');
-    }
-
-    return Order(
-      id: map['id']?.toString() ?? '',
-      user: user,
-      store: store,
-      note: map['note']?.toString(),
-      status: map['status']?.toString() ?? '',
-      paymentMethod: map['paymentMethod'] != null
-          ? PaymentMethod.values.firstWhere(
-              (e) => e.toString() == map['paymentMethod'],
-              orElse: () => PaymentMethod.cashOnDelivery)
-          : PaymentMethod.cashOnDelivery,
-      totalAmount: _parseDouble(map['totalAmount']),
-      shippingFee: _parseDouble(map['shippingFee']),
-      recipientName: map['recipientName']?.toString() ?? '',
-      recipientAddress: map['recipientAddress']?.toString() ?? '',
-      createdAt: map['createdAt'] as int,
-    );
   }
 }

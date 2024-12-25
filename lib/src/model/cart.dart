@@ -1,54 +1,32 @@
-import 'cartItem.dart';
-import 'store.dart';
+import 'cart_item.dart';
 import 'user.dart';
-
 class Cart {
-  final String id;
-  final User user;
-  final Store store;
-  final int createdAt;
-  final int isPaid;
-  final List<CartItem> items;
+  int? id;
+  User? customer;
+  int? total;
+  List<CartItem> items = [];
 
-  Cart({
-    required this.id,
-    required this.user,
-    required this.store,
-    required this.createdAt,
-    this.isPaid = 0,
-    this.items = const [],
-  });
+  Cart({this.id, this.customer, this.total, this.items = const []});
 
+  // Tạo đối tượng Cart từ Map
+  factory Cart.fromMap(Map<String, dynamic> map) {
+    return Cart(
+      id: map['id'],
+      customer: map['customer'] != null ? User.fromMap(map['customer']) : null,
+      total: map['total'],
+      items: map['items'] != null
+          ? List<CartItem>.from(map['items'].map((item) => CartItem.fromMap(item)))
+          : [],
+    );
+  }
+
+  // Chuyển đối tượng Cart thành Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'userId': user.id,
-      'storeId': store.id,
-      'createdAt': createdAt,
-      'isPaid': isPaid,
+      'customer': customer?.toMap(),
+      'total': total,
       'items': items.map((item) => item.toMap()).toList(),
     };
-  }
-
-  factory Cart.fromMap(String id, Map<String, dynamic> map,
-      {required Map<String, User> users,
-      required Map<String, Store> stores}) {
-    return Cart(
-      id: id,
-      user: users[map['userId']]!,
-      store: stores[map['storeId']]!,
-      createdAt: map['createdAt'] as int,
-      isPaid: map['isPaid'] as int? ?? 0,
-      items: (map['items'] as List<dynamic>?)
-              ?.map((item) => CartItem.fromMap(item, 
-                  carts: {}, 
-                  products: {}, 
-                  feedbacks: {}, 
-                  orders: {}, 
-                  stores: stores,
-                  users: users))
-              .toList() ??
-          const [],
-    );
   }
 }
