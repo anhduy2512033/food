@@ -1,13 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:flutter/material.dart';
+import '../../model/address.dart';
 import '../../model/cart.dart';
-import '../../model/cartItem.dart';
-import '../../model/store.dart';
+import '../../model/cart_item.dart';
+import '../../model/contact_information.dart';
 import '../../model/user.dart' as app_user;
 import '../../service/CartService.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'checkoutScreen.dart';
-
 class CartScreen extends StatefulWidget {
   @override
   _CartScreenState createState() => _CartScreenState();
@@ -75,31 +75,23 @@ class _CartScreenState extends State<CartScreen> {
 
               final cart = Cart(
                 id: pendingCart.key,
-                user: app_user.User(
+                customer: app_user.User(
                   id: user.uid,
                   fullName: '',
                   email: '',
                   phone: '',
+                  createdAt: cartData['createdAt'] as int?,
                 ),
-                store: Store(
-                  id: storeId,
-                  name: storeData['name'] ?? '',
-                  description: storeData['description'] ?? '',
-                  phoneNumber: storeData['phoneNumber'] ?? '',
-                  address: storeData['address'] ?? '',
-                  status: storeData['status'] ?? '',
-                  rating: (storeData['rating'] as num?)?.toDouble() ?? 0,
-                ),
-                createdAt: cartData['createdAt'] ?? 0,
               );
+
 
               setState(() {
                 currentCart = cart;
               });
 
               // Lắng nghe thay đổi của cartItems
-              _cartService.getCartItems(cart.id).listen(
-                (items) {
+              _cartService.getCartItems(cart.id?.toString() ?? '').listen(
+                    (items) {
                   print('Received ${items.length} cart items'); // Debug log
                   if (mounted) {
                     setState(() {
@@ -115,8 +107,7 @@ class _CartScreenState extends State<CartScreen> {
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content:
-                            Text('Không thể tải giỏ hàng: ${error.toString()}'),
+                        content: Text('Không thể tải giỏ hàng: ${error.toString()}'),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -141,7 +132,7 @@ class _CartScreenState extends State<CartScreen> {
   void _removeAllItems() async {
     if (currentCart != null) {
       try {
-        await _cartService.clearCart(currentCart!.id);
+        await _cartService.clearCart(currentCart!.id?.toString() ?? '');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đã xóa tất cả sản phẩm')),
         );
@@ -155,11 +146,11 @@ class _CartScreenState extends State<CartScreen> {
 
   void _updateQuantity(CartItem item, bool isIncrease) async {
     try {
-      int newQuantity = isIncrease ? item.quantity + 1 : item.quantity - 1;
+      int newQuantity = isIncrease ? item.quantity! + 1 : item.quantity! - 1;
       if (newQuantity <= 0) {
-        await _cartService.removeFromCart(item.id);
+        await _cartService.removeFromCart(item.id.toString());
       } else {
-        await _cartService.updateCartItemQuantity(item.id, newQuantity);
+        await _cartService.updateCartItemQuantity(item.id.toString(), newQuantity);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -169,8 +160,11 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   double _calculateTotal() {
-    return cartItems.fold(
-        0, (total, item) => total + (item.price * item.quantity));
+    return cartItems.fold(0, (total, item) {
+      num itemPrice = item.food?.price ?? 0;
+      int itemQuantity = item.quantity ?? 0;
+      return total + (itemPrice * itemQuantity);
+    });
   }
 
   @override
@@ -295,11 +289,12 @@ class CartItemWidget extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hình ảnh sản phẩm
+            // Hình ảnh sản phẩm - Dùng images từ food, nếu không có hình ảnh, dùng màu nền mặc định
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                item.product.image ?? 'placeholder_url',
+              child: item.food?.images != null && item.food!.images!.isNotEmpty
+                  ? Image.network(
+                item.food!.images!.first, // Lấy hình ảnh đầu tiên trong danh sách images
                 width: 70,
                 height: 70,
                 fit: BoxFit.cover,
@@ -311,6 +306,12 @@ class CartItemWidget extends StatelessWidget {
                     child: Icon(Icons.image_not_supported),
                   );
                 },
+              )
+                  : Container(
+                width: 70,
+                height: 70,
+                color: Colors.grey[300], // Nếu không có ảnh thì hiển thị màu xám
+                child: Icon(Icons.image_not_supported),
               ),
             ),
             SizedBox(width: 12),
@@ -321,7 +322,7 @@ class CartItemWidget extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.product.name,
+                    item.food?.name ?? 'Tên sản phẩm', // Lấy tên từ food
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -331,7 +332,7 @@ class CartItemWidget extends StatelessWidget {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    '${item.price.toStringAsFixed(0)}đ',
+                    '${item.food?.price?.toStringAsFixed(0) ?? '0'}đ', // Lấy giá từ food
                     style: TextStyle(
                       color: Colors.red,
                       fontWeight: FontWeight.bold,
@@ -366,7 +367,7 @@ class CartItemWidget extends StatelessWidget {
                     width: 32,
                     alignment: Alignment.center,
                     child: Text(
-                      '${item.quantity}',
+                      '${item.quantity}', // Sử dụng số lượng từ item.quantity
                       style: TextStyle(fontSize: 14),
                     ),
                   ),
@@ -389,3 +390,4 @@ class CartItemWidget extends StatelessWidget {
     );
   }
 }
+

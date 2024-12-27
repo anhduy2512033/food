@@ -1,16 +1,18 @@
 import 'package:firebase_database/firebase_database.dart';
-import '../model/feedback.dart' as FeedbackModel;
+import '../model/address.dart';
 import '../model/category.dart';
-import '../model/feedback_comment.dart';
-import '../model/product.dart';
-import '../model/store.dart';
+import '../model/contact_information.dart';
+import '../model/food.dart';
+import '../model/ingredients_item.dart';
+import '../model/restaurant.dart';
 import '../model/user.dart';
+import '../model/order.dart';
 
 class ProductService {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
   // Cache maps
-  final Map<String, Store> _storeCache = {};
+  final Map<String, Restaurant> _storeCache = {};
   final Map<String, Category> _categoryCache = {};
   final Map<String, User> _userCache = {};
 
@@ -20,164 +22,91 @@ class ProductService {
     }
 
     final snapshot = await _dbRef.child('users/$userId').get();
-    final Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+        snapshot.value as Map);
     // Pass userId separately as User.fromMap requires
-    final user = User.fromMap(userId, data);
+    final user = User.fromMap({
+      'id': userId,
+      ...data,
+    });
     _userCache[userId] = user;
     return user;
   }
 
-  Stream<Product> getProductStream(String productId) {
-    print('ProductService - Getting product stream for ID: $productId');
-    
-    return _dbRef.child('products/$productId').onValue.map((event) async {
+  Stream<Food> getFoodStream(String foodId) {
+    print('FoodService - Getting food stream for ID: $foodId');
+
+    return _dbRef
+        .child('foods/$foodId')
+        .onValue
+        .map((event) async {
       if (event.snapshot.value == null) {
-        throw Exception('Product not found');
+        throw Exception('Food not found');
       }
 
-      final Map<String, dynamic> data = Map<String, dynamic>.from(event.snapshot.value as Map);
+      final Map<String, dynamic> data = Map<String, dynamic>.from(
+          event.snapshot.value as Map);
       print('Raw data from Firebase: $data');
 
-      // Sửa lại cách lấy storeId và categoryId
-      final storeId = data['storeId']?.toString() ?? ''; // Thay đổi từ store_id thành storeId
-      final categoryId = data['categoryId']?.toString() ?? ''; // Thay đổi từ category_id thành categoryId
+      // Lấy thông tin categoryId
+      final categoryId = data['categoryId']?.toString() ??
+          ''; // Đảm bảo đổi từ `category_id` thành `categoryId`
 
-      print('Store ID from data: $storeId');
       print('Category ID from data: $categoryId');
 
-      if (storeId.isEmpty || categoryId.isEmpty) {
-        throw Exception('Missing store or category information');
+      if (categoryId.isEmpty) {
+        throw Exception('Missing category information');
       }
 
-      Store store;
-      Category category;
+      Category foodCategory;
 
       try {
-        // Lấy thông tin store
-        final storeSnapshot = await _dbRef.child('stores/$storeId').get();
-        if (storeSnapshot.value != null) {
-          final storeData = Map<String, dynamic>.from(storeSnapshot.value as Map);
-          store = Store(
-            id: storeId,
-            name: storeData['name']?.toString() ?? '',
-            description: storeData['description']?.toString() ?? '',
-            phoneNumber: storeData['phoneNumber']?.toString() ?? '',
-            address: storeData['address']?.toString() ?? '',
-            status: storeData['status']?.toString() ?? '',
-            rating: (storeData['rating'] as num?)?.toDouble() ?? 0,
-          );
-        } else {
-          throw Exception('Store not found');
-        }
-
-        // Lấy thông tin category
-        final categorySnapshot = await _dbRef.child('categories/$categoryId').get();
+        final categorySnapshot = await _dbRef.child('categories/$categoryId')
+            .get();
         if (categorySnapshot.value != null) {
-          final categoryData = Map<String, dynamic>.from(categorySnapshot.value as Map);
-          category = Category(
-            id: categoryId,
-            name: categoryData['name']?.toString() ?? '',
-            description: categoryData['description']?.toString() ?? '',
+          final categoryData = Map<String, dynamic>.from(
+              categorySnapshot.value as Map);
+          foodCategory = Category(
+            id: categoryData['id'] as int?,
+            name: categoryData['name']?.toString() ?? 'Danh mục không xác định',
+            restaurant: categoryData['restaurant'] != null
+                ? Restaurant.fromMap(
+                Map<String, dynamic>.from(categoryData['restaurant'] as Map))
+                : null,
           );
         } else {
           throw Exception('Category not found');
         }
-
       } catch (e) {
-        print('Error getting store or category: $e');
+        print('Error getting category: $e');
         rethrow;
       }
 
-      return Product(
-        id: productId,
+
+      return Food(
+        id: data['id'] as int?,
         name: data['name']?.toString() ?? '',
-        price: (data['price'] as num?)?.toDouble() ?? 0,
         description: data['description']?.toString() ?? '',
-        status: data['status']?.toString() ?? '',
-        rating: (data['rating'] as num?)?.toDouble() ?? 0,
-        image: data['image']?.toString() ?? '',
-        thumbnail: data['thumbnail']?.toString() ?? '',
-        store: store,
-        category: category,
+        price: (data['price'] as num?)?.toInt() ?? 0,
+        foodCategory: foodCategory,
+        images: data['images'] != null ? List<String>.from(data['images']) : [],
+        available: data['available'] as bool? ?? false,
+        isVegetarian: data['isVegetarian'] as bool? ?? false,
+        isSeasonal: data['isSeasonal'] as bool? ?? false,
+        ingredients: data['ingredients'] != null
+            ? List<IngredientsItem>.from(
+            data['ingredients'].map((item) => IngredientsItem.fromMap(item)))
+            : [],
+        creationDate: data['creationDate'] != null ? DateTime.parse(
+            data['creationDate']) : null,
+        restaurant: data['restaurant'] != null
+            ? Restaurant.fromMap(Map<String, dynamic>.from(data['restaurant']))
+            : null,
       );
     }).asyncMap((future) => future);
   }
 
-  Stream<List<FeedbackModel.Feedback>> getProductFeedbacks(String productId) {
-    return _dbRef
-        .child('feedbacks')
-        .orderByChild('productId')
-        .equalTo(productId)
-        .onValue
-        .map<Future<List<FeedbackModel.Feedback>>>((event) async {
-      if (event.snapshot.value == null) return [];
-
-      final Map<String, dynamic> feedbacksData =
-      Map<String, dynamic>.from(event.snapshot.value as Map);
-      final List<FeedbackModel.Feedback> feedbacks = [];
-
-      for (var entry in feedbacksData.entries) {
-        final String feedbackId = entry.key;
-        final Map<String, dynamic> data = Map<String, dynamic>.from(entry.value as Map);
-
-        try {
-          final userId = data['userId'] as String;
-          final user = await _getUser(userId);
-          final product = await _getProduct(productId);
-
-          feedbacks.add(FeedbackModel.Feedback.fromMap(
-            {...data, 'id': feedbackId},
-            <String, User>{userId: user},
-            <String, Product>{productId: product},
-          ));
-        } catch (e) {
-          print('Error processing feedback $feedbackId: $e');
-          continue;
-        }
-      }
-
-      return feedbacks;
-    }).asyncMap((future) => future);
-  }
-
-  Stream<List<FeedbackComment>> getFeedbackComments(String feedbackId) {
-    return _dbRef
-        .child('feedback_comments')
-        .orderByChild('feedbackId')
-        .equalTo(feedbackId)
-        .onValue
-        .map<Future<List<FeedbackComment>>>((event) async {
-      if (event.snapshot.value == null) return [];
-
-      final Map<String, dynamic> commentsData =
-      Map<String, dynamic>.from(event.snapshot.value as Map);
-      final List<FeedbackComment> comments = [];
-
-      for (var entry in commentsData.entries) {
-        final String commentId = entry.key;
-        final Map<String, dynamic> data = Map<String, dynamic>.from(entry.value as Map);
-
-        try {
-          final userId = data['userId'] as String;
-          final user = await _getUser(userId);
-          final feedback = await _getFeedback(feedbackId);
-
-          comments.add(FeedbackComment.fromMap(
-            {...data, 'id': commentId},
-            <String, User>{userId: user},
-            <String, FeedbackModel.Feedback>{feedbackId: feedback},
-          ));
-        } catch (e) {
-          print('Error processing comment $commentId: $e');
-          continue;
-        }
-      }
-
-      return comments;
-    }).asyncMap((future) => future);
-  }
-
-  Future<Store> _getStore(String storeId) async {
+  Future<Restaurant> _getStore(String storeId) async {
     if (_storeCache.containsKey(storeId)) {
       return _storeCache[storeId]!;
     }
@@ -187,8 +116,9 @@ class ProductService {
       throw Exception('Store not found');
     }
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
-    final store = Store.fromMap({...data, 'id': storeId});
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+        snapshot.value as Map);
+    final store = Restaurant.fromMap({...data, 'id': storeId});
     _storeCache[storeId] = store;
     return store;
   }
@@ -203,106 +133,125 @@ class ProductService {
       throw Exception('Category not found');
     }
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+        snapshot.value as Map);
     final category = Category.fromMap({...data, 'id': categoryId});
     _categoryCache[categoryId] = category;
     return category;
   }
 
-  Future<Product> _getProduct(String productId) async {
-    final snapshot = await _dbRef.child('products/$productId').get();
+  Future<Food> _getFood(String foodId) async {
+    // Lấy dữ liệu món ăn từ Firebase
+    final snapshot = await _dbRef.child('foods/$foodId').get();
     if (snapshot.value == null) {
-      throw Exception('Product not found');
+      throw Exception('Food not found');
     }
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
-    final store = await _getStore(data['storeId'] as String);
+    // Chuyển đổi dữ liệu thành Map
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+        snapshot.value as Map);
+
+    // Lấy thông tin nhà hàng (Restaurant)
+    final restaurant = await _getStore(data['restaurantId'] as String);
+
+    // Lấy thông tin danh mục (Category)
     final category = await _getCategory(data['categoryId'] as String);
 
-    return Product.fromMap(
-      {...data, 'id': productId},
-      <String, Store>{store.id: store},
-      <String, Category>{category.id: category},
-    );
+    // Tạo đối tượng Food từ dữ liệu và thông tin liên quan
+    return Food.fromMap({
+      ...data,
+      'id': foodId,
+      'restaurant': restaurant.toMap(),
+      'foodCategory': category.toMap(),
+    });
   }
-
-  Future<FeedbackModel.Feedback> _getFeedback(String feedbackId) async {
-    final snapshot = await _dbRef.child('feedbacks/$feedbackId').get();
-    if (snapshot.value == null) {
-      throw Exception('Feedback not found');
-    }
-
-    final Map<String, dynamic> data = Map<String, dynamic>.from(snapshot.value as Map);
-    final user = await _getUser(data['userId'] as String);
-    final product = await _getProduct(data['productId'] as String);
-
-    return FeedbackModel.Feedback.fromMap(
-      {...data, 'id': feedbackId},
-      <String, User>{user.id: user},
-      <String, Product>{product.id: product},
-    );
-  }
-
-  Future<Product> getProduct(String productId) async {
+  Future<Food> getFood(String foodId) async {
     try {
-      print('Getting product with ID: $productId'); // Debug log
+      print('Getting food with ID: $foodId'); // Debug log
 
       final snapshot = await _dbRef
-          .child('products')
-          .child(productId)
+          .child('foods') // Đường dẫn Firebase phù hợp với Food
+          .child(foodId)
           .get();
 
       if (snapshot.value == null) {
-        throw Exception('Không tìm thấy sản phẩm');
+        throw Exception('Không tìm thấy món ăn');
       }
 
       final data = Map<dynamic, dynamic>.from(snapshot.value as Map);
-      print('Product data from Firebase: $data'); // Debug log
+      print('Food data from Firebase: $data'); // Debug log
 
       // Kiểm tra và xử lý dữ liệu null
-      final storeId = data['store_id']?.toString() ?? '';
+      final restaurantId = data['restaurant_id']?.toString() ?? '';
       final categoryId = data['category_id']?.toString() ?? '';
 
-      // Lấy thông tin store nếu có storeId
-      Store store = Store(
-        id: storeId,
+      // Khởi tạo restaurant mặc định
+      Restaurant restaurant = Restaurant(
+        id: restaurantId.isNotEmpty ? int.tryParse(restaurantId) : null,
+        owner: null,
         name: '',
         description: '',
-        phoneNumber: '',
-        address: '',
-        status: '',
-        rating: 0,
+        cuisineType: '',
+        address: null,
+        contactInformation: null,
+        openingHours: '',
+        orders: [],
+        images: [],
+        registrationDate: DateTime.now(),
+        open: true,
+        foods: [],
       );
 
-      if (storeId.isNotEmpty) {
+      if (restaurantId.isNotEmpty) {
         try {
-          final storeSnapshot = await _dbRef
-              .child('stores')
-              .child(storeId)
+          final restaurantSnapshot = await _dbRef
+              .child('restaurants') // Lấy thông tin từ restaurants
+              .child(restaurantId)
               .get();
-          
-          if (storeSnapshot.value != null) {
-            final storeData = Map<dynamic, dynamic>.from(storeSnapshot.value as Map);
-            store = Store(
-              id: storeId,
-              name: storeData['name']?.toString() ?? '',
-              description: storeData['description']?.toString() ?? '',
-              phoneNumber: storeData['phone_number']?.toString() ?? '',
-              address: storeData['address']?.toString() ?? '',
-              status: storeData['status']?.toString() ?? '',
-              rating: (storeData['rating'] as num?)?.toDouble() ?? 0,
+
+          if (restaurantSnapshot.value != null) {
+            final restaurantData = Map<String, dynamic>.from(restaurantSnapshot.value as Map);
+
+            restaurant = Restaurant(
+              id: int.tryParse(restaurantId) ?? 0,
+              owner: restaurantData['owner'] != null
+                  ? User.fromMap(Map<String, dynamic>.from(restaurantData['owner']))
+                  : null,
+              name: restaurantData['name']?.toString() ?? '',
+              description: restaurantData['description']?.toString() ?? '',
+              cuisineType: restaurantData['cuisineType']?.toString() ?? '',
+              address: restaurantData['address'] != null
+                  ? Address.fromMap(Map<String, dynamic>.from(restaurantData['address']))
+                  : null,
+              contactInformation: restaurantData['contactInformation'] != null
+                  ? ContactInformation.fromMap(Map<String, dynamic>.from(restaurantData['contactInformation']))
+                  : null,
+              openingHours: restaurantData['openingHours']?.toString() ?? '',
+              orders: restaurantData['orders'] != null
+                  ? List<Order>.from(restaurantData['orders'].map((order) => Order.fromMap(Map<String, dynamic>.from(order))))
+                  : [],
+              images: restaurantData['images'] != null
+                  ? List<String>.from(restaurantData['images'])
+                  : [],
+              registrationDate: restaurantData['registrationDate'] != null
+                  ? DateTime.parse(restaurantData['registrationDate'])
+                  : DateTime.now(),
+              open: restaurantData['open'] ?? true,
+              foods: restaurantData['foods'] != null
+                  ? List<Food>.from(restaurantData['foods'].map((food) => Food.fromMap(Map<String, dynamic>.from(food))))
+                  : [],
             );
           }
         } catch (e) {
-          print('Error loading store data: $e');
+          print('Error loading restaurant data: $e');
         }
       }
 
-      // Lấy thông tin category nếu có categoryId
+      // Khởi tạo category mặc định
       Category category = Category(
-        id: categoryId,
+        id: int.tryParse(categoryId) ?? 0,
         name: '',
-        description: '',
+        restaurant: null,
       );
 
       if (categoryId.isNotEmpty) {
@@ -311,36 +260,51 @@ class ProductService {
               .child('categories')
               .child(categoryId)
               .get();
-          
+
           if (categorySnapshot.value != null) {
-            final categoryData = Map<dynamic, dynamic>.from(categorySnapshot.value as Map);
-            category = Category(
-              id: categoryId,
-              name: categoryData['name']?.toString() ?? '',
-              description: categoryData['description']?.toString() ?? '',
-            );
+            final categoryData = Map<String, dynamic>.from(categorySnapshot.value as Map);
+
+            category = Category.fromMap({
+              'id': int.tryParse(categoryId) ?? 0,
+              'name': categoryData['name']?.toString() ?? '',
+              'restaurant': restaurant != null ? restaurant.toMap() : null,
+            });
           }
         } catch (e) {
           print('Error loading category data: $e');
         }
       }
 
-      return Product(
-        id: productId,
+      return Food(
+        id: int.tryParse(foodId) ?? 0,
         name: data['name']?.toString() ?? '',
-        price: (data['price'] as num?)?.toDouble() ?? 0,
         description: data['description']?.toString() ?? '',
-        status: data['status']?.toString() ?? '',
-        rating: (data['rating'] as num?)?.toDouble() ?? 0,
-        image: data['image']?.toString() ?? '',
-        thumbnail: data['thumbnail']?.toString() ?? '',
-        store: store,
-        category: category,
+        price: (data['price'] as num?)?.toInt() ?? 0,
+        foodCategory: data['foodCategory'] != null
+            ? Category.fromMap(data['foodCategory'])
+            : null,
+        images: data['images'] != null
+            ? List<String>.from(data['images'])
+            : [],
+        available: data['available'] ?? false,
+        restaurant: data['restaurant'] != null
+            ? Restaurant.fromMap(data['restaurant'])
+            : null,
+        isVegetarian: data['isVegetarian'] ?? false,
+        isSeasonal: data['isSeasonal'] ?? false,
+        ingredients: data['ingredients'] != null
+            ? List<IngredientsItem>.from(
+            data['ingredients'].map((item) => IngredientsItem.fromMap(item)))
+            : [],
+        creationDate: data['creationDate'] != null
+            ? DateTime.parse(data['creationDate'])
+            : null,
       );
     } catch (e) {
-      print('Error getting product: $e');
-      print('Stack trace: ${StackTrace.current}');
+      print('Error getting food: $e');
       rethrow;
     }
   }
+
+  getProductStream(String productId) {}
 }

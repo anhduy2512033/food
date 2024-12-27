@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../model/address.dart';
 import '../../model/cart.dart';
-import '../../model/cartItem.dart';
+import '../../model/cart_item.dart';
 import '../../model/order.dart';
+import '../../model/order_item.dart';
 import '../../model/user.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
@@ -64,17 +66,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (orderId == null) throw Exception('Không thể tạo mã đơn hàng');
 
       final order = Order(
-        id: orderId,
-        user: widget.cart.user,
-        store: widget.cart.store,
-        note: _note,
-        status: 'pending',
-        paymentMethod: PaymentMethod.cashOnDelivery,
-        totalAmount: widget.totalAmount,
-        shippingFee: 0, // Có thể thêm logic tính phí ship sau
-        recipientName: _nameController.text,
-        recipientAddress: _addressController.text,
-        createdAt: DateTime.now().millisecondsSinceEpoch,
+        id: int.parse(orderId),
+        customer: widget.cart.customer, // Mối quan hệ với User
+        //restaurant: widget.cart.store, // Mối quan hệ với Restaurant
+        orderStatus: 'pending', // Trạng thái đơn hàng
+        createdAt: DateTime.now(), // Ngày tạo đơn hàng
+        deliveryAddress: Address( // Địa chỉ giao hàng
+          id: 0, // Có thể thay bằng ID phù hợp nếu có
+        ),
+        totalAmount: widget.totalAmount.round(), // Tổng số tiền
+        items: [], // Danh sách các sản phẩm (có thể thêm sau)
+        totalItem: 0, // Tổng số sản phẩm (có thể tính sau)
+        totalPrice: widget.totalAmount.round(), // Tổng giá trị đơn hàng
       );
 
       // Tạo order mới
@@ -83,18 +86,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       // Tạo order items
       final orderItemsRef = _database.child('orderItems').child(orderId);
       for (var item in widget.cartItems) {
-        await orderItemsRef.push().set({
-          'productId': item.product.id,
-          'quantity': item.quantity,
-          'price': item.price,
-        });
+        // Tạo OrderItem từ cartItems
+        OrderItem orderItem = OrderItem(
+          food: item.food, // food là Product
+          quantity: item.quantity,
+          totalPrice: item.totalPrice, // Tính tổng giá trị của món hàng
+          ingredients: item.ingredients, // Nếu có nguyên liệu thì gán vào
+        );
+
+        // Lưu OrderItem vào Firebase
+        await orderItemsRef.push().set(orderItem.toMap());
       }
 
-      // Cập nhật trạng thái cart
-      await _database.child('carts').child(widget.cart.id).update({
-        'status': 'completed',
-        'isPaid': 0,
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Đặt hàng thành công!')),
@@ -151,14 +154,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              '${item.product.name} x${item.quantity}',
+                                              '${item.food?.name} x${item.quantity}',
                                               style: TextStyle(fontSize: 16),
                                             ),
                                           ),
                                           Text(
-                                            '${(item.price * item.quantity).toStringAsFixed(0)}đ',
+                                            '${((item.totalPrice ?? 0) * (item.quantity ?? 0)).toStringAsFixed(0)}đ',
                                             style: TextStyle(fontSize: 16),
-                                          ),
+                                          )
                                         ],
                                       ),
                                     ))

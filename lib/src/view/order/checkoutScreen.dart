@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../model/address.dart';
 import '../../model/cart.dart';
-import '../../model/cartItem.dart';
+import '../../model/cart_item.dart';
+import '../../model/food.dart';
 import '../../model/order.dart';
-import '../../model/user.dart';
+import '../../model/order_item.dart';
+import '../../model/restaurant.dart';
+
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
 
@@ -61,45 +65,67 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final orderId = _database.child('orders').push().key;
       if (orderId == null) throw Exception('Không thể tạo mã đơn hàng');
 
-      final storeId = widget.cart.store.id;
-      if (storeId.isEmpty) throw Exception('Không tìm thấy thông tin cửa hàng');
+      // Lấy thông tin từ Cart
+      final cart = widget.cart;
+      final user = cart.customer; // Lấy người dùng từ Cart
 
-      final order = {
-        'id': orderId,
-        'userId': widget.cart.user.id,
-        'storeId': storeId,
-        'note': _note,
-        'status': 'đang giao',
-        'paymentMethod': PaymentMethod.cashOnDelivery.toString(),
-        'totalAmount': widget.totalAmount,
-        'shippingFee': 0,
-        'recipientName': _nameController.text,
-        'recipientAddress': _addressController.text,
-        'createdAt': DateTime.now().millisecondsSinceEpoch,
-      };
+      if (user == null) throw Exception('Không tìm thấy thông tin người dùng');
 
-      await _database.child('orders').child(orderId).set(order);
+      // Tạo đối tượng đơn hàng
+      final order = Order(
+        id: int.tryParse(orderId),
+        customer: user,
+        //restaurant: restaurant,
+        totalAmount: widget.totalAmount.toInt(),
+        orderStatus: 'đang giao',
+        createdAt: DateTime.now(),
+        deliveryAddress: Address(id: null),
+        items: [],
+        totalItem: widget.cartItems.length,
+        totalPrice: widget.totalAmount.toInt(),
+      );
 
+      // Lưu đơn hàng vào Firebase
+      await _database.child('orders').child(orderId).set(order.toMap());
+
+      // Lưu danh sách OrderItems vào Firebase
       final orderItemsRef = _database.child('orderItems').child(orderId);
+
       for (var item in widget.cartItems) {
-        await orderItemsRef.push().set({
-          'productId': item.product.id,
-          'quantity': item.quantity,
-          'price': item.price,
-        });
+        // Tạo một OrderItem mới dựa trên dữ liệu từ cartItems
+        final orderItem = OrderItem(
+          id: item.id, // ID sản phẩm
+          food: Food(
+            id: item.food?.id, // ID món ăn
+            name: item.food?.name, // Tên món ăn
+            price: item.food?.price, // Giá món ăn
+            description: item.food?.description, // Mô tả món ăn
+          ),
+          quantity: item.quantity, // Số lượng
+          totalPrice: ((item.food?.price ?? 0) * (item.quantity ?? 0)).toInt(),
+          ingredients: item.ingredients, // Danh sách nguyên liệu
+        );
+
+        // Lưu OrderItem vào Firebase
+        await orderItemsRef.push().set(orderItem.toMap());
       }
 
-      await _database.child('carts').child(widget.cart.id).update({
+
+      // Cập nhật trạng thái giỏ hàng sau khi đặt hàng thành công
+      await _database.child('carts').child(widget.cart.id?.toString() ?? '').update({
         'status': 'completed',
         'isPaid': 0,
       });
 
+      // Thông báo đặt hàng thành công
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Đặt hàng thành công!')),
       );
 
+      // Quay lại màn hình đầu tiên
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
+      // Xử lý lỗi nếu có
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lỗi: ${e.toString()}')),
       );
@@ -107,6 +133,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -117,196 +144,196 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Chi tiết đơn hàng
-                    Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Chi tiết đơn hàng
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Chi tiết đơn hàng',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Divider(),
+                      ...widget.cartItems
+                          .map((item) => Padding(
+                        padding:
+                        EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Chi tiết đơn hàng',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                            Expanded(
+                              child: Text(
+                                '${item.food?.name ?? 'N/A'} x${item.quantity ?? 0}',
+                                style: TextStyle(fontSize: 16),
                               ),
                             ),
-                            Divider(),
-                            ...widget.cartItems
-                                .map((item) => Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 8),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              '${item.product.name} x${item.quantity}',
-                                              style: TextStyle(fontSize: 16),
-                                            ),
-                                          ),
-                                          Text(
-                                            '${(item.price * item.quantity).toStringAsFixed(0)}đ',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                        ],
-                                      ),
-                                    ))
-                                .toList(),
-                            Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Tổng tiền:',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  '${widget.totalAmount.toStringAsFixed(0)}đ',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              '${(item.totalPrice ?? 0).toString()}đ',
+                              style: TextStyle(fontSize: 16),
                             ),
                           ],
                         ),
+                      ))
+                          .toList(),
+                      Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Tổng tiền:',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${widget.totalAmount.toStringAsFixed(0)}đ',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-
-                    SizedBox(height: 20),
-
-                    // Thông tin người nhận
-                    Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Thông tin người nhận',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            TextFormField(
-                              controller: _nameController,
-                              decoration: InputDecoration(
-                                labelText: 'Tên người nhận',
-                                border: OutlineInputBorder(),
-                              ),
-                              validator: (value) {
-                                if (value?.isEmpty ?? true) {
-                                  return 'Vui lòng nhập tên người nhận';
-                                }
-                                return null;
-                              },
-                            ),
-                            SizedBox(height: 16),
-                            TextFormField(
-                              controller: _phoneController,
-                              decoration: InputDecoration(
-                                labelText: 'Số điện thoại',
-                                border: OutlineInputBorder(),
-                              ),
-                              validator: (value) {
-                                if (value?.isEmpty ?? true) {
-                                  return 'Vui lòng nhập số điện thoại';
-                                }
-                                return null;
-                              },
-                            ),
-                            SizedBox(height: 16),
-                            TextFormField(
-                              controller: _addressController,
-                              decoration: InputDecoration(
-                                labelText: 'Địa chỉ',
-                                border: OutlineInputBorder(),
-                              ),
-                              validator: (value) {
-                                if (value?.isEmpty ?? true) {
-                                  return 'Vui lòng nhập địa chỉ';
-                                }
-                                return null;
-                              },
-                            ),
-                            SizedBox(height: 16),
-                            TextFormField(
-                              decoration: InputDecoration(
-                                labelText: 'Ghi chú (tùy chọn)',
-                                border: OutlineInputBorder(),
-                              ),
-                              onChanged: (value) => _note = value,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 20),
-
-                    // Phương thức thanh toán
-                    Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Phương thức thanh toán',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Icon(Icons.money),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Thanh toán khi nhận hàng',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 20),
-
-                    // Nút đặt hàng
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _createOrder,
-                        child: Text(
-                          'Xác nhận đặt hàng',
-                          style: TextStyle(fontSize: 18),
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+
+              SizedBox(height: 20),
+
+              // Thông tin người nhận
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Thông tin người nhận',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Tên người nhận',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) {
+                            return 'Vui lòng nhập tên người nhận';
+                          }
+                          return null;
+                        },
+                      ),
+                      SizedBox(height: 16),
+                      TextFormField(
+                        controller: _phoneController,
+                        decoration: InputDecoration(
+                          labelText: 'Số điện thoại',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) {
+                            return 'Vui lòng nhập số điện thoại';
+                          }
+                          return null;
+                        },
+                      ),
+                      SizedBox(height: 16),
+                      TextFormField(
+                        controller: _addressController,
+                        decoration: InputDecoration(
+                          labelText: 'Địa chỉ',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) {
+                            return 'Vui lòng nhập địa chỉ';
+                          }
+                          return null;
+                        },
+                      ),
+                      SizedBox(height: 16),
+                      TextFormField(
+                        decoration: InputDecoration(
+                          labelText: 'Ghi chú (tùy chọn)',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (value) => _note = value,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 20),
+
+              // Phương thức thanh toán
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Phương thức thanh toán',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.money),
+                          SizedBox(width: 8),
+                          Text(
+                            'Thanh toán khi nhận hàng',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 20),
+
+              // Nút đặt hàng
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _createOrder,
+                  child: Text(
+                    'Xác nhận đặt hàng',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

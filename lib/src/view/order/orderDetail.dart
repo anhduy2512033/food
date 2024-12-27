@@ -26,8 +26,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Future<void> _loadOrderItems() async {
     try {
-      final snapshot =
-          await _database.child('orderItems').child(widget.order.id).get();
+      final snapshot = await _database.child('orderItems').child(widget.order.id?.toString() ?? '').get();
 
       if (snapshot.value != null) {
         final items = (snapshot.value as Map<dynamic, dynamic>).entries;
@@ -64,7 +63,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     try {
       await _database
           .child('orders')
-          .child(widget.order.id)
+          .child(widget.order.id?.toString() ?? '')
           .update({'status': newStatus});
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,7 +71,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       );
 
       setState(() {
-        widget.order.status = newStatus;
+        widget.order.orderStatus  = newStatus;
       });
 
       if (newStatus == 'đã giao') {
@@ -121,17 +120,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             ),
                           ),
                           SizedBox(height: 16),
-                          _buildInfoRow('Mã đơn hàng:', widget.order.id),
+                          _buildInfoRow('Mã đơn hàng:', widget.order.id?.toString() ?? 'N/A'), // Đảm bảo id có giá trị
                           _buildInfoRow(
                             'Thời gian:',
-                            DateFormat('dd/MM/yyyy HH:mm').format(
-                              DateTime.fromMillisecondsSinceEpoch(
-                                widget.order.createdAt,
-                              ),
-                            ),
+                            widget.order.createdAt != null
+                                ? DateFormat('dd/MM/yyyy HH:mm').format(widget.order.createdAt!)
+                                : 'N/A', // Đảm bảo createdAt không null trước khi format
                           ),
-                          _buildInfoRow('Trạng thái:', widget.order.status),
+                          _buildInfoRow('Trạng thái:', widget.order.orderStatus ?? 'Chưa có'), // Đảm bảo orderStatus có giá trị
                         ],
+
                       ),
                     ),
                   ),
@@ -153,11 +151,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             ),
                           ),
                           SizedBox(height: 16),
-                          _buildInfoRow('Tên:', widget.order.recipientName),
+                          _buildInfoRow('Tên:', widget.order.customer?.fullName ?? 'Chưa có'), // Lấy tên người nhận từ Customer
                           _buildInfoRow(
-                              'Địa chỉ:', widget.order.recipientAddress),
-                          if (widget.order.note != null)
-                            _buildInfoRow('Ghi chú:', widget.order.note!),
+                            'Địa chỉ:',
+                            widget.order.deliveryAddress?.id != null
+                                ? 'Địa chỉ ID: ${widget.order.deliveryAddress?.id}'
+                                : 'Chưa có',
+                          ),
                         ],
                       ),
                     ),
@@ -238,7 +238,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   SizedBox(height: 20),
 
                   // Nút hành động
-                  if (widget.order.status == 'đang giao')
+                  if (widget.order.orderStatus  == 'đang giao')
                     Row(
                       children: [
                         Expanded(

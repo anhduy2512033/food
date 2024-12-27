@@ -8,8 +8,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
 import 'package:latlong2/latlong.dart' as latlong2;
 import '../../categoryScreen.dart';
 import '../../model/category.dart';
-import '../../model/product.dart';
-import '../../model/store.dart';
+
+import '../../model/food.dart';
+import '../../model/ingredients_item.dart';
+import '../../model/restaurant.dart';
 import '../map/showlocation.dart';
 import '../order/cartScreen.dart';
 import '../productScreen.dart';
@@ -25,14 +27,14 @@ class HomeTab extends StatefulWidget {
 class _HomeTabState extends State<HomeTab> {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
   List<Category> categories = [];
-  List<Product> products = [];
-  List<Store> stores = [];
+  List<Food> products = [];
+  List<Restaurant> stores = [];
   bool isLoading = true;
   String? error;
 
   // Thêm các biến để quản lý tìm kiếm
   final TextEditingController _searchController = TextEditingController();
-  List<Product> filteredProducts = [];
+  List<Food> filteredProducts = [];
   bool isSearching = false;
 
   @override
@@ -58,27 +60,25 @@ class _HomeTabState extends State<HomeTab> {
         final searchLower = query.toLowerCase();
 
         // Tìm kiếm trong danh sách sản phẩm
-        List<Product> productResults = products.where((product) {
-          final nameLower = product.name.toLowerCase();
-          final storeName = product.store.name.toLowerCase();
-          return nameLower.contains(searchLower) ||
-              storeName.contains(searchLower);
+        List<Food> productResults = products.where((product) {
+          final nameLower = product.name?.toLowerCase();
+          final storeName = product.restaurant?.name?.toLowerCase();
+          return nameLower!.contains(searchLower) ||
+              storeName!.contains(searchLower);
         }).toList();
 
         // Tìm kiếm trong danh sách cửa hàng và lấy sản phẩm của cửa hàng đó
-        List<Product> storeProducts = [];
+        List<Food> storeProducts = [];
         for (var store in stores) {
-          if (store.name.toLowerCase().contains(searchLower)) {
+          if (store.name!.toLowerCase().contains(searchLower)) {
             storeProducts.addAll(
-                products.where((product) => product.store.id == store.id));
+                products.where((product) => product.restaurant?.id == store.id));
           }
         }
 
         // Kết hợp kết quả và loại bỏ trùng lặp
         filteredProducts = {...productResults, ...storeProducts}.toList();
 
-        // Sắp xếp theo rating
-        filteredProducts.sort((a, b) => b.rating.compareTo(a.rating));
       }
     });
   }
@@ -243,7 +243,7 @@ class _HomeTabState extends State<HomeTab> {
 
       // Load stores first
       final storesSnapshot = await _database.child('stores').get();
-      final Map<String, Store> storesMap = {};
+      final Map<String, Restaurant> storesMap = {};
 
       if (storesSnapshot.exists && storesSnapshot.value != null) {
         final storesData =
@@ -260,7 +260,7 @@ class _HomeTabState extends State<HomeTab> {
               print('Processing store: ${entry.key}');
               print('Store data: $storeData');
 
-              final store = Store.fromMap(storeData);
+              final store = Restaurant.fromMap(storeData);
               stores.add(store);
               storesMap[entry.key] = store;
 
@@ -320,17 +320,28 @@ class _HomeTabState extends State<HomeTab> {
                   categoryId != null &&
                   storesMap.containsKey(storeId) &&
                   categoriesMap.containsKey(categoryId)) {
-                final product = Product(
-                  id: entry.key,
+                final product = Food(
+                  id: int.tryParse(entry.key) ?? 0,
                   name: productData['name']?.toString() ?? '',
-                  price: (productData['price'] as num?)?.toDouble() ?? 0,
+                  price: (productData['price'] as num?)?.toInt(),  // Đổi sang int cho price
                   description: productData['description']?.toString() ?? '',
-                  status: productData['status']?.toString() ?? '',
-                  rating: (productData['rating'] as num?)?.toDouble() ?? 0,
-                  image: productData['image']?.toString() ?? '',
-                  thumbnail: productData['thumbnail']?.toString() ?? '',
-                  store: storesMap[storeId]!,
-                  category: categoriesMap[categoryId]!,
+                  foodCategory: productData['categoryId'] != null
+                      ? categoriesMap[productData['categoryId']]
+                      : null,  // Lấy category từ categoriesMap
+                  images: productData['images'] != null
+                      ? List<String>.from(productData['images'])  // Chuyển danh sách hình ảnh
+                      : [],
+                  available: productData['status'] == 'available',  // Kiểm tra trạng thái món ăn
+                  restaurant: storesMap[storeId],  // Lấy nhà hàng từ storesMap
+                  isVegetarian: productData['isVegetarian'] ?? false,  // Nếu không có thì mặc định là false
+                  isSeasonal: productData['isSeasonal'] ?? false,  // Nếu không có thì mặc định là false
+                  ingredients: productData['ingredients'] != null
+                      ? List<IngredientsItem>.from(productData['ingredients'].map((item) =>
+                      IngredientsItem.fromMap(item))) // Lấy danh sách nguyên liệu
+                      : [],
+                  creationDate: productData['creationDate'] != null
+                      ? DateTime.parse(productData['creationDate'])  // Chuyển creationDate từ chuỗi
+                      : null,
                 );
 
                 products.add(product);
@@ -348,8 +359,6 @@ class _HomeTabState extends State<HomeTab> {
           }
         });
 
-        // Sort products by rating
-        products.sort((a, b) => b.rating.compareTo(a.rating));
       }
 
       if (mounted) {
@@ -467,24 +476,17 @@ class _HomeTabState extends State<HomeTab> {
               decoration: BoxDecoration(
                 color: Colors.orange[50],
                 borderRadius: BorderRadius.circular(15),
-                image: category.image != null
-                    ? DecorationImage(
-                        image: NetworkImage(category.image!),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
+                // Không có hình ảnh trong Category, nên bỏ phần image
               ),
-              child: category.image == null
-                  ? Icon(
-                      Icons.category,
-                      color: Colors.red[800],
-                      size: 30,
-                    )
-                  : null,
+              child: Icon(
+                Icons.category,
+                color: Colors.red[800],
+                size: 30,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
-              category.name,
+              category.name ?? '', // Kiểm tra null trước khi sử dụng
               style: const TextStyle(
                 fontWeight: FontWeight.w500,
               ),
@@ -497,7 +499,7 @@ class _HomeTabState extends State<HomeTab> {
 
 // Add this method to the _HomeTabState class
 
-  Widget _buildStoreItem(Store store) {
+  Widget _buildStoreItem(Restaurant store) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -532,24 +534,23 @@ class _HomeTabState extends State<HomeTab> {
             Container(
               height: 120,
               decoration: BoxDecoration(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
-                image: store.image != null
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                image: store.images != null && store.images!.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(store.image!),
-                        fit: BoxFit.cover,
-                      )
+                  image: NetworkImage(store.images![0]),
+                  fit: BoxFit.cover,
+                )
                     : null,
                 color: Colors.grey[100],
               ),
-              child: store.image == null
+              child: store.images == null || store.images!.isEmpty
                   ? Center(
-                      child: Icon(
-                        Icons.store,
-                        size: 40,
-                        color: Colors.red[800],
-                      ),
-                    )
+                child: Icon(
+                  Icons.store,
+                  size: 40,
+                  color: Colors.red[800],
+                ),
+              )
                   : null,
             ),
             // Store Info
@@ -559,7 +560,7 @@ class _HomeTabState extends State<HomeTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    store.name,
+                    store.name ?? '', // Ensure `store.name` is not null
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -569,7 +570,7 @@ class _HomeTabState extends State<HomeTab> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    store.address,
+                    store.address?.toString() ?? '', // Displaying address if exists
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 12,
@@ -587,9 +588,9 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        store.rating.toStringAsFixed(1),
+                        store.open != null && store.open! ? 'Open' : 'Closed', // Check open status
                         style: TextStyle(
-                          color: Colors.red[800],
+                          color: store.open != null && store.open! ? Colors.green : Colors.red,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -600,17 +601,13 @@ class _HomeTabState extends State<HomeTab> {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: store.status.toLowerCase() == 'open'
-                              ? Colors.green[50]
-                              : Colors.red[50],
+                          color: store.open != null && store.open! ? Colors.green[50] : Colors.red[50],
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          store.status,
+                          store.open != null && store.open! ? 'Open' : 'Closed',
                           style: TextStyle(
-                            color: store.status.toLowerCase() == 'open'
-                                ? Colors.green
-                                : Colors.red,
+                            color: store.open != null && store.open! ? Colors.green : Colors.red,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -627,15 +624,16 @@ class _HomeTabState extends State<HomeTab> {
     );
   }
 
+
 // Update the build method in _HomeTabState to include the stores section
 // Add this section between Categories and Popular Products:
-  Widget _buildProductItem(Product product) {
+  Widget _buildProductItem(Food product) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProductDetailPage(productId: product.id),
+            builder: (context) => ProductDetailPage(productId: product.id!.toString()),
           ),
         );
       },
@@ -657,25 +655,26 @@ class _HomeTabState extends State<HomeTab> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
+              // Product Image
               Container(
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(15),
-                  image: product.image != null
+                  image: product.images != null && product.images!.isNotEmpty
                       ? DecorationImage(
-                          image: NetworkImage(product.image!),
-                          fit: BoxFit.cover,
-                        )
+                    image: NetworkImage(product.images![0]),
+                    fit: BoxFit.cover,
+                  )
                       : null,
                 ),
-                child: product.image == null
+                child: product.images == null || product.images!.isEmpty
                     ? Icon(
-                        Icons.food_bank,
-                        size: 40,
-                        color: Colors.red[800],
-                      )
+                  Icons.food_bank,
+                  size: 40,
+                  color: Colors.red[800],
+                )
                     : null,
               ),
               const SizedBox(width: 16),
@@ -684,7 +683,7 @@ class _HomeTabState extends State<HomeTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product.name,
+                      product.name ?? '', // Ensure product.name is not null
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -692,7 +691,7 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      product.description,
+                      product.description ?? '', // Ensure description is not null
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -702,7 +701,7 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Cửa hàng: ${product.store.name}',
+                      'Cửa hàng: ${product.restaurant?.name ?? 'Không xác định'}', // Ensure restaurant name is not null
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 12,
@@ -718,15 +717,19 @@ class _HomeTabState extends State<HomeTab> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          product.rating.toStringAsFixed(1),
+                          product.available != null && product.available!
+                              ? 'Còn hàng'
+                              : 'Hết hàng',
                           style: TextStyle(
-                            color: Colors.red[800],
+                            color: product.available != null && product.available!
+                                ? Colors.green
+                                : Colors.red,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const Spacer(),
                         Text(
-                          '${product.price.toStringAsFixed(0)}₫',
+                          '${product.price?.toStringAsFixed(0) ?? '0'}₫', // Ensure price is not null
                           style: TextStyle(
                             color: Colors.red[800],
                             fontWeight: FontWeight.bold,
@@ -744,7 +747,6 @@ class _HomeTabState extends State<HomeTab> {
       ),
     );
   }
-
   Widget _buildCategories() {
     return Container(
       padding: const EdgeInsets.all(16),

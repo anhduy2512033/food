@@ -2,12 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../model/category.dart';
-import '../model/product.dart';
-import '../model/store.dart';
+import '../model/food.dart';
+import '../model/restaurant.dart';
 import 'productScreen.dart';
 
 class StoreScreen extends StatefulWidget {
-  final Store store;
+  final Restaurant store;
   final String userId; // Add userId parameter
 
   const StoreScreen({
@@ -22,7 +22,7 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   final DatabaseReference _database = FirebaseDatabase.instance.ref();
-  List<Product> storeProducts = [];
+  List<Food> storeProducts = [];
   bool isLoading = true;
   bool isFavorite = false;
   String? error;
@@ -173,7 +173,7 @@ class _StoreScreenState extends State<StoreScreen> {
             : {};
 
         // Create maps for fromMap factory
-        final Map<String, Store> storesMap = {widget.store.id: widget.store};
+        final Map<String, Restaurant> storesMap = {widget.store.id.toString(): widget.store};
         final Map<String, Category> categoriesMap = {};
 
         // Process categories
@@ -186,13 +186,25 @@ class _StoreScreenState extends State<StoreScreen> {
         });
 
         // Process products
-        final List<Product> products = [];
+        final List<Food> products = [];
         productsData.forEach((key, value) {
           try {
             if (value is Map) {
               final productData = Map<String, dynamic>.from(value);
-              productData['id'] = key;
-              final product = Product.fromMap(productData, storesMap, categoriesMap);
+              productData['id'] = key;  // Add the ID from the key
+
+              // Create the Food object using the fromMap constructor
+              final product = Food.fromMap(productData);
+
+              // If restaurant and category data are stored in maps, update the Food object accordingly
+              if (storesMap.containsKey(product.restaurant?.id.toString())) {
+                product.restaurant = storesMap[product.restaurant?.id.toString()];
+              }
+
+              if (categoriesMap.containsKey(product.foodCategory?.id.toString())) {
+                product.foodCategory = categoriesMap[product.foodCategory?.id.toString()];
+              }
+
               products.add(product);
             }
           } catch (e) {
@@ -201,7 +213,7 @@ class _StoreScreenState extends State<StoreScreen> {
         });
 
         // Sort products by rating
-        products.sort((a, b) => b.rating.compareTo(a.rating));
+        //products.sort((a, b) => b.rating.compareTo(a.rating));
 
         setState(() {
           storeProducts = products;
@@ -231,12 +243,12 @@ class _StoreScreenState extends State<StoreScreen> {
             expandedHeight: 200,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: widget.store.image != null
+              background: widget.store.images != null && widget.store.images!.isNotEmpty
                   ? Image.network(
-                widget.store.image!,
+                widget.store.images!.first,
                 fit: BoxFit.cover,
               )
-                  : Container(
+              : Container(
                 color: Colors.grey[200],
                 child: Icon(
                   Icons.store,
@@ -268,7 +280,7 @@ class _StoreScreenState extends State<StoreScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          widget.store.name,
+                          widget.store.name ?? 'Tên cửa hàng',
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -281,44 +293,44 @@ class _StoreScreenState extends State<StoreScreen> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: widget.store.status.toLowerCase() == 'open'
+                          color: widget.store.open == true
                               ? Colors.green[50]
                               : Colors.red[50],
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          widget.store.status,
+                          widget.store.open == true ? 'Open' : 'Closed',  // Hiển thị "Open" hoặc "Closed"
                           style: TextStyle(
-                            color: widget.store.status.toLowerCase() == 'open'
+                            color: widget.store.open == true
                                 ? Colors.green
                                 : Colors.red,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.star,
-                        size: 20,
-                        color: Colors.orange[800],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        widget.store.rating.toStringAsFixed(1),
-                        style: TextStyle(
-                          color: Colors.orange[800],
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
+                      const SizedBox(height: 8),
+                      // Row(
+                        //   children: [
+                        //     // Icon hiển thị sao màu cam
+                        //     Icon(
+                        //       Icons.star,  // Biểu tượng sao
+                        //       size: 20,  // Kích thước của biểu tượng sao
+                        //       color: Colors.orange[800],  // Màu sắc của biểu tượng sao
+                        //     ),
+                        //     const SizedBox(width: 4),  // Khoảng cách giữa biểu tượng sao và số đánh giá
+                        //     Text(
+                        //       // Hiển thị đánh giá của cửa hàng dưới dạng số với 1 chữ số thập phân
+                        //       widget.store.rating.toStringAsFixed(1),  // Chuyển đổi rating thành chuỗi với 1 chữ số thập phân
+                        //       style: TextStyle(
+                        //         color: Colors.orange[800],  // Màu chữ của rating
+                        //         fontWeight: FontWeight.bold,  // Định dạng chữ đậm
+                        //         fontSize: 16,  // Kích thước chữ
+                        //       ),
+                        //     ),
+                        //   ],
+                        // )
+                      const SizedBox(height: 16),
+                      const Text(
                     'Thông tin liên hệ',
                     style: TextStyle(
                       fontSize: 18,
@@ -326,29 +338,22 @@ class _StoreScreenState extends State<StoreScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          widget.store.address,
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on, color: Colors.grey[600]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+
+                              widget.store.address != null
+                                  ? 'Address ID: ${widget.store.address!.id}'
+                                  : 'No address available',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(Icons.phone, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.store.phoneNumber,
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
+                      const SizedBox(height: 8),
                   const SizedBox(height: 16),
                   const Text(
                     'Mô tả',
@@ -359,7 +364,7 @@ class _StoreScreenState extends State<StoreScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    widget.store.description,
+                    widget.store.description ?? 'No description available',
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                   const SizedBox(height: 24),
@@ -372,9 +377,9 @@ class _StoreScreenState extends State<StoreScreen> {
                   ),
                 ],
               ),
-            ),
+            ]),
           ),
-
+          ),
           // Products List
           if (isLoading)
             const SliverToBoxAdapter(
@@ -423,7 +428,7 @@ class _StoreScreenState extends State<StoreScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (context) => ProductDetailPage(
-                              productId: product.id,
+                              productId: product.id?.toString() ?? 'default_value',
                             ),
                           ),
                         );
@@ -443,14 +448,14 @@ class _StoreScreenState extends State<StoreScreen> {
                                   borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(12),
                                   ),
-                                  image: product.image != null
+                                  image: product.images != null
                                       ? DecorationImage(
-                                    image: NetworkImage(product.image!),
+                                    image: NetworkImage(product.images!.first),
                                     fit: BoxFit.cover,
                                   )
                                       : null,
                                 ),
-                                child: product.image == null
+                                child: product.images == null
                                     ? Center(
                                   child: Icon(
                                     Icons.fastfood,
@@ -468,7 +473,7 @@ class _StoreScreenState extends State<StoreScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    product.name,
+                                    product.name ?? 'No name available',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
@@ -478,7 +483,7 @@ class _StoreScreenState extends State<StoreScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${product.price.toStringAsFixed(0)}₫',
+                                    '${product.price?.toStringAsFixed(0)}₫',
                                     style: TextStyle(
                                       color: Colors.orange[800],
                                       fontWeight: FontWeight.bold,
@@ -493,13 +498,6 @@ class _StoreScreenState extends State<StoreScreen> {
                                         color: Colors.orange[800],
                                       ),
                                       const SizedBox(width: 4),
-                                      Text(
-                                        product.rating.toStringAsFixed(1),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ],

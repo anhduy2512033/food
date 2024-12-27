@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 // import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import '../../model/feedback.dart' as FeedbackModel;
+//import '../../model/feedback.dart' as FeedbackModel;
 
 class UserProfileScreen extends StatefulWidget {
   @override
@@ -726,7 +726,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       }
 
       final feedbacksMap = Map<String, dynamic>.from(snapshot.value as Map);
-      List<FeedbackModel.Feedback> feedbacks = [];
+      //List<FeedbackModel.Feedback> feedbacks = [];
 
       for (var entry in feedbacksMap.entries) {
         final feedbackData = Map<String, dynamic>.from(entry.value);
@@ -766,8 +766,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           productData['id'] = feedbackData['productId'];
 
           // Tạo đối tượng Feedback
-          feedbacks.add(FeedbackModel.Feedback.fromMap(
-              feedbackData, userData, productData));
+          //feedbacks.add(FeedbackModel.Feedback.fromMap(
+              //feedbackData, userData, productData));
         }
       }
 
@@ -780,48 +780,48 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             height: 400,
             width: 300,
             child: ListView.builder(
-              itemCount: feedbacks.length,
+              //itemCount: feedbacks.length,
               itemBuilder: (context, index) {
-                final feedback = feedbacks[index];
+                //final feedback = feedbacks[index];
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          feedback.user.fullName,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Row(
-                          children: List.generate(5, (starIndex) {
-                            return Icon(
-                              starIndex < feedback.rating
-                                  ? Icons.star
-                                  : Icons.star_border,
-                              color: Colors.amber,
-                              size: 16,
-                            );
-                          }),
-                        ),
+                        // Text(
+                        //   feedback.user.fullName,
+                        //   style: const TextStyle(fontWeight: FontWeight.bold),
+                        // ),
+                        // Row(
+                        //   children: List.generate(5, (starIndex) {
+                        //     return Icon(
+                        //       starIndex < feedback.rating
+                        //           ? Icons.star
+                        //           : Icons.star_border,
+                        //       color: Colors.amber,
+                        //       size: 16,
+                        //     );
+                        //   }),
+                        // ),
                         const SizedBox(height: 4),
-                        Text(feedback.content),
-                        if (feedback.image != null) ...[
+                        // Text(feedback.content),
+                        //if (feedback.image != null) ...[
                           const SizedBox(height: 8),
-                          Image.memory(
-                            base64Decode(feedback.image!.split(',').last),
-                            height: 100,
-                            fit: BoxFit.cover,
-                          ),
-                        ],
+                          // Image.memory(
+                          //   base64Decode(feedback.image!.split(',').last),
+                          //   height: 100,
+                          //   fit: BoxFit.cover,
+                          // ),
+                        //],
                         const SizedBox(height: 4),
-                        Text(
-                          DateFormat('MMM dd, yyyy').format(
-                            DateTime.fromMillisecondsSinceEpoch(
-                                feedback.createdAt),
-                          ),
-                          style: const TextStyle(color: Colors.grey),
-                        ),
+                        // Text(
+                        //   DateFormat('MMM dd, yyyy').format(
+                        //     DateTime.fromMillisecondsSinceEpoch(
+                        //         feedback.createdAt),
+                        //   ),
+                        //   style: const TextStyle(color: Colors.grey),
+                        // ),
                       ],
                     ),
                   ),

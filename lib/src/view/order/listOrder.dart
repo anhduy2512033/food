@@ -1,12 +1,16 @@
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../model/address.dart';
+import '../../model/food.dart';
+import '../../model/ingredients_item.dart';
 import '../../model/order.dart';
+import '../../model/restaurant.dart';
 import '../../model/user.dart' as app_user;
-import '../../model/store.dart';
 import 'orderDetail.dart';
-
+import '../../model/category.dart';
 class OrdersTab extends StatefulWidget {
   @override
   _OrdersTabState createState() => _OrdersTabState();
@@ -47,7 +51,7 @@ class _OrdersTabState extends State<OrdersTab> {
         final storesSnapshot = await _database.child('stores').get();
 
         final users = <String, app_user.User>{};
-        final stores = <String, Store>{};
+        final stores = <String, Food>{};
 
         if (usersSnapshot.value != null) {
           final usersData = usersSnapshot.value as Map<dynamic, dynamic>;
@@ -64,15 +68,38 @@ class _OrdersTabState extends State<OrdersTab> {
         if (storesSnapshot.value != null) {
           final storesData = storesSnapshot.value as Map<dynamic, dynamic>;
           storesData.forEach((key, value) {
-            stores[key.toString()] = Store(
-              id: key.toString(),
-              name: value['name'] ?? '',
-              description: value['description'] ?? '',
-              phoneNumber: value['phoneNumber'] ?? '',
-              address: value['address'] ?? '',
-              status: value['status'] ?? '',
-              rating: (value['rating'] as num?)?.toDouble() ?? 0.0,
+            stores[key.toString()] = Food(
+              id: int.tryParse(key.toString()), // ID chuyển thành int
+              name: value['name'] ?? '', // Tên món ăn
+              description: value['description'] ?? '', // Mô tả món ăn
+              price: value['price'] ?? 0, // Giá mặc định là 0 nếu không có
+              foodCategory: value['foodCategory'] != null
+                  ? Category.fromMap({
+                ...value['foodCategory'],
+                'restaurant': value['foodCategory']['restaurant'] != null
+                    ? Restaurant.fromMap(value['foodCategory']['restaurant'])
+                    : null,
+              })
+                  : null, // Thể loại món ăn
+
+              images: value['images'] != null
+                  ? List<String>.from(value['images'])
+                  : [], // Danh sách hình ảnh
+              available: value['available'] ?? true, // Mặc định là true nếu không có
+              restaurant: value['restaurant'] != null
+                  ? Restaurant.fromMap(value['restaurant'])
+                  : null, // Thông tin nhà hàng
+              isVegetarian: value['isVegetarian'] ?? false, // Mặc định không phải món chay
+              isSeasonal: value['isSeasonal'] ?? false, // Mặc định không theo mùa
+              ingredients: value['ingredients'] != null
+                  ? List<IngredientsItem>.from(value['ingredients']
+                  .map((item) => IngredientsItem.fromMap(item)))
+                  : [], // Danh sách nguyên liệu
+              creationDate: value['creationDate'] != null
+                  ? DateTime.parse(value['creationDate'])
+                  : null, // Ngày tạo món ăn
             );
+
           });
         }
 
@@ -93,20 +120,23 @@ class _OrdersTabState extends State<OrdersTab> {
 
               if (store != null && user != null) {
                 final order = Order(
-                  id: entry.key,
-                  user: user,
-                  store: store,
-                  note: orderData['note']?.toString(),
-                  status: orderData['status']?.toString() ?? '',
-                  paymentMethod: PaymentMethod.cashOnDelivery,
-                  totalAmount: (orderData['totalAmount'] as num).toDouble(),
-                  shippingFee:
-                      (orderData['shippingFee'] as num?)?.toDouble() ?? 0.0,
-                  recipientName: orderData['recipientName']?.toString() ?? '',
-                  recipientAddress:
-                      orderData['recipientAddress']?.toString() ?? '',
-                  createdAt: orderData['createdAt'] as int,
+                  id: int.tryParse(entry.key), // ID đơn hàng
+                  customer: user, // Người dùng (thay user cho customer)
+                  //restaurant: restaurant, // Cửa hàng (Restaurant thay cho store)
+                  orderStatus: orderData['status']?.toString() ?? '', // Trạng thái đơn hàng
+                  totalAmount: (orderData['totalAmount'] as num?)?.toInt() ?? 0, // Tổng tiền
+                  createdAt: DateTime.fromMillisecondsSinceEpoch(
+                      orderData['createdAt'] as int? ?? 0), // Ngày tạo đơn hàng
+                  deliveryAddress: orderData['deliveryAddress'] != null
+                      ? Address.fromMap(orderData['deliveryAddress'] as Map<String, dynamic>)
+                      : Address(
+                    id: null, // Mặc định nếu không có thông tin
+                  ),
+                  items: [], // Danh sách sản phẩm (sẽ thêm sau)
+                  totalItem: 0, // Tổng số sản phẩm (cần xử lý riêng)
+                  totalPrice: (orderData['totalAmount'] as num?)?.toInt() ?? 0, // Tổng giá trị
                 );
+
                 loadedOrders.add(order);
               }
             }
@@ -116,7 +146,7 @@ class _OrdersTabState extends State<OrdersTab> {
         }
 
         // Sắp xếp theo thời gian mới nhất
-        loadedOrders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        //loadedOrders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         setState(() => orders = loadedOrders);
         print('Loaded ${loadedOrders.length} orders');
@@ -165,8 +195,6 @@ class _OrdersTabState extends State<OrdersTab> {
               itemCount: orders.length,
               itemBuilder: (context, index) {
                 final order = orders[index];
-                final statusColor = _getStatusColor(order.status);
-                final statusIcon = _getStatusIcon(order.status);
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
@@ -203,18 +231,6 @@ class _OrdersTabState extends State<OrdersTab> {
                                 padding: EdgeInsets.all(16.0),
                                 child: Row(
                                   children: [
-                                    Container(
-                                      padding: EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        statusIcon,
-                                        color: statusColor,
-                                        size: 24,
-                                      ),
-                                    ),
                                     SizedBox(width: 16),
                                     Expanded(
                                       child: Column(
@@ -226,43 +242,22 @@ class _OrdersTabState extends State<OrdersTab> {
                                                 MainAxisAlignment.spaceBetween,
                                             children: [
                                               Text(
-                                                'Đơn hàng ${order.id.substring(0, 8)}',
+                                                'Đơn hàng ${order.id != null ? order.id.toString().padLeft(8, '0') : 'N/A'}',
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 16,
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 6,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: statusColor
-                                                      .withOpacity(0.1),
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                ),
-                                                child: Text(
-                                                  order.status,
-                                                  style: TextStyle(
-                                                    color: statusColor,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
                                                 ),
                                               ),
                                             ],
                                           ),
                                           SizedBox(height: 8),
                                           Text(
-                                            DateFormat('dd/MM/yyyy HH:mm')
-                                                .format(DateTime
-                                                    .fromMillisecondsSinceEpoch(
-                                                        order.createdAt)),
+                                            order.createdAt != null
+                                                ? DateFormat('dd/MM/yyyy HH:mm').format(order.createdAt!)
+                                                : 'N/A', // Hiển thị 'N/A' nếu createdAt là null
                                             style: TextStyle(
-                                              color: Colors.grey[600],
                                               fontSize: 14,
+                                              color: Colors.grey,
                                             ),
                                           ),
                                         ],
@@ -288,7 +283,7 @@ class _OrdersTabState extends State<OrdersTab> {
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      'Cửa hàng: ${order.store.name}',
+                                      'Cửa hàng: ${order.restaurant?.name}',
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 14,
@@ -321,3 +316,4 @@ class _OrdersTabState extends State<OrdersTab> {
     );
   }
 }
+

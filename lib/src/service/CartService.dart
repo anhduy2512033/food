@@ -430,4 +430,9 @@ class CartService {
       print('Removed empty cart: $cartId');
     }
   }
+  Future<void> removeFromCart(String itemId) async {
+    // Logic để xóa sản phẩm khỏi giỏ hàng
+    print("Removing item with id: $itemId");
+  }
+
 }

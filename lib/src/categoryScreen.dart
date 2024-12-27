@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'model/category.dart';
-import 'model/product.dart';
+import 'model/food.dart';
 import 'view/productScreen.dart';
-
 
 class CategoryProductScreen extends StatefulWidget {
   final Category category;
-  final List<Product> allProducts;
+  final List<Food> allProducts;
 
   const CategoryProductScreen({
     Key? key,
@@ -20,7 +19,7 @@ class CategoryProductScreen extends StatefulWidget {
 }
 
 class _CategoryProductScreenState extends State<CategoryProductScreen> {
-  late List<Product> filteredProducts;
+  late List<Food> filteredProducts;
   String _searchQuery = '';
   String _selectedSort = 'default'; // default, price_asc, price_desc, rating
 
@@ -34,20 +33,21 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
     // Lọc sản phẩm theo danh mục
     filteredProducts = widget.allProducts
         .where((product) => 
-            product.category.id == widget.category.id &&
-            product.name.toLowerCase().contains(_searchQuery.toLowerCase()))
+            product.foodCategory?.id == widget.category.id &&
+            product.name!.toLowerCase().contains(_searchQuery.toLowerCase()))
         .toList();
 
     // Sắp xếp sản phẩm
     switch (_selectedSort) {
       case 'price_asc':
-        filteredProducts.sort((a, b) => a.price.compareTo(b.price));
+        filteredProducts.sort((a, b) {
+          return (a.price ?? 0).compareTo(b.price ?? 0);
+        });
         break;
       case 'price_desc':
-        filteredProducts.sort((a, b) => b.price.compareTo(a.price));
-        break;
-      case 'rating':
-        filteredProducts.sort((a, b) => b.rating.compareTo(a.rating));
+        filteredProducts.sort((a, b) {
+          return (b.price ?? 0).compareTo(a.price ?? 0);
+        });
         break;
       default:
         // Giữ nguyên thứ tự mặc định
@@ -80,7 +80,7 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: Text(
-        widget.category.name,
+        widget.category.name ?? 'No category name available',
         style: const TextStyle(
           color: Colors.black87,
           fontWeight: FontWeight.bold,
@@ -193,13 +193,13 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
     );
   }
 
-  Widget _buildProductItem(Product product) {
+  Widget _buildProductItem(Food product) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProductDetailPage(productId: product.id),
+            builder: (context) => ProductDetailPage(productId: product.id?.toString() ?? ''),
           ),
         );
       },
@@ -229,14 +229,14 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
                   height: 100,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    image: product.image != null
+                    image: product.images != null
                         ? DecorationImage(
-                            image: NetworkImage(product.image!),
-                            fit: BoxFit.cover,
+                      image: NetworkImage(product.images!.isNotEmpty ? product.images!.first : ''),
+                      fit: BoxFit.cover,
                           )
                         : null,
                   ),
-                  child: product.image == null
+                  child: product.images == null
                       ? Icon(Icons.fastfood, color: Colors.orange[800], size: 40)
                       : null,
                 ),
@@ -248,7 +248,7 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      product.name,
+                      product.name ?? 'No name available',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -258,7 +258,7 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      product.store.name,
+                      product.restaurant?.name ?? 'No restaurant name available',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -269,16 +269,9 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
                       children: [
                         Icon(Icons.star, size: 16, color: Colors.orange[800]),
                         const SizedBox(width: 4),
-                        Text(
-                          product.rating.toStringAsFixed(1),
-                          style: TextStyle(
-                            color: Colors.orange[800],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
                         const Spacer(),
                         Text(
-                          '${product.price.toStringAsFixed(0)}₫',
+                          '${product.price?.toStringAsFixed(0)}₫',
                           style: TextStyle(
                             color: Colors.orange[800],
                             fontWeight: FontWeight.bold,
@@ -310,20 +303,13 @@ class _CategoryProductScreenState extends State<CategoryProductScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.category.name,
+              widget.category.name ?? 'No category name available',
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              widget.category.description,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 16,
-              ),
-            ),
             const SizedBox(height: 16),
             Text(
               '${filteredProducts.length} sản phẩm',

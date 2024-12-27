@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import '../../model/store.dart';
+import '../../model/restaurant.dart';
 import '../storeScreen.dart';
-import '../../model/favorite.dart';
+
 
 class FavoritesTab extends StatefulWidget {
   @override
@@ -15,7 +15,7 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  List<Store> favoriteStores = [];
+  List<Restaurant> favoriteStores = [];
   bool isLoading = true;
   String? error;
 
@@ -96,13 +96,13 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
       final favoritesData = Map<String, dynamic>.from(favoritesSnapshot.value as Map);
 
       // Create list of favorite stores
-      final List<Store> stores = [];
+      final List<Restaurant> stores = [];
       for (var favorite in favoritesData.values) {
         final String storeId = favorite['storeId'] as String;
         if (storesData.containsKey(storeId)) {
           final storeData = Map<String, dynamic>.from(storesData[storeId] as Map);
           storeData['id'] = storeId;
-          stores.add(Store.fromMap(storeData));
+          stores.add(Restaurant.fromMap(storeData));
         }
       }
 
@@ -194,7 +194,7 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildStoreCard(Store store) {
+  Widget _buildStoreCard(Restaurant store) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -233,7 +233,7 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        store.name,
+                        store.name ?? '',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -241,24 +241,6 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                      ),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.star_rounded,
-                            color: Colors.red[700],
-                            size: 18,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            store.rating.toStringAsFixed(1),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.red[700],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -368,17 +350,17 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildStoreImage(Store store) {
+  Widget _buildStoreImage(Restaurant store) {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: AspectRatio(
         aspectRatio: 1.2,
-        child: store.image != null
+        child: store.images != null && store.images!.isNotEmpty
             ? Image.network(
-                store.image!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
-              )
+          store.images!.first,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        )
             : _buildPlaceholder(),
       ),
     );
@@ -395,7 +377,7 @@ class _FavoritesTabState extends State<FavoritesTab> with SingleTickerProviderSt
     );
   }
 
-  void _navigateToStoreDetail(Store store) {
+  void _navigateToStoreDetail(Restaurant store) {
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => StoreScreen(
